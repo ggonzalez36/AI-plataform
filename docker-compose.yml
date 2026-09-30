@@ -1,0 +1,163 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------------------
+  # Ingress & API Gateway (Go)
+  # -------------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: enterprise-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - REDIS_ADDR=redis:6379
+      - RAG_SERVICE_URL=http://hybrid-rag-engine:8001
+      - MLOPS_SERVICE_URL=http://mlops-inference:8002
+      - JWT_SECRET=enterprise-platform-secret-key-2026-min-32-chars-long
+      - RATE_LIMIT_RPS=50
+      - RATE_LIMIT_BURST=100
+      - AUTH_ENABLED=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+    depends_on:
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - platform-network
+
+  # -------------------------------------------------------------------------
+  # AI Pilar: Hybrid RAG Engine (FastAPI + Qdrant)
+  # -------------------------------------------------------------------------
+  hybrid-rag-engine:
+    build:
+      context: ./services/hybrid-rag-engine
+      dockerfile: Dockerfile
+    container_name: enterprise-hybrid-rag
+    ports:
+      - "8001:8001"
+    environment:
+      - PORT=8001
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - platform-network
+
+  # -------------------------------------------------------------------------
+  # ML Pilar: MLOps Real-time Inference (FastAPI + ONNX Runtime)
+  # -------------------------------------------------------------------------
+  mlops-inference:
+    build:
+      context: ./services/mlops-inference
+      dockerfile: Dockerfile
+    container_name: enterprise-mlops-inference
+    ports:
+      - "8002:8002"
+    environment:
+      - PORT=8002
+      - MODEL_PATH=/app/model/risk_model.onnx
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    depends_on:
+      otel-collector:
+        condition: service_started
+    networks:
+      - platform-network
+
+  # -------------------------------------------------------------------------
+  # Datastores: Redis (Rate Limiting & Cache) + Qdrant (Vector DB)
+  # -------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: enterprise-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - platform-network
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: enterprise-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/6333' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - platform-network
+
+  # -------------------------------------------------------------------------
+  # SRE & Observability: OpenTelemetry Collector, Prometheus, Grafana, Jaeger
+  # -------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.98.0
+    container_name: enterprise-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Prometheus metrics exporter from collector
+    networks:
+      - platform-network
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: enterprise-prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - platform-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.55
+    container_name: enterprise-jaeger
+    ports:
+      - "16686:16686" # Web UI
+      - "14268:14268"
+    networks:
+      - platform-network
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: enterprise-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+      - jaeger
+    networks:
+      - platform-network
+
+networks:
+  platform-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:

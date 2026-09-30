@@ -1,0 +1,18 @@
+[project]
+name = "hybrid-rag-engine"
+version = "0.1.0"
+description = "Enterprise Hybrid RAG Service with Qdrant, Sparse/Dense Retrieval and Ragas Evaluation"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic>=2.6.0",
+    "qdrant-client>=1.8.0",
+    "httpx>=0.27.0",
+    "prometheus-client>=0.20.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

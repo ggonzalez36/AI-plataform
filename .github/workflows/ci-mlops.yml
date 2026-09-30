@@ -1,0 +1,44 @@
+name: CI - MLOps Inference Engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/mlops-inference/**'
+      - '.github/workflows/ci-mlops.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/mlops-inference/**'
+      - '.github/workflows/ci-mlops.yml'
+
+jobs:
+  test-mlops:
+    name: Test & Validate MLOps Inference
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        working-directory: services/mlops-inference
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest httpx fastapi pydantic numpy onnxruntime prometheus-client
+
+      - name: Lint with Flake8
+        working-directory: services/mlops-inference
+        run: flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Build Container Image (Dry Run)
+        uses: docker/build-push-action@v5
+        with:
+          context: services/mlops-inference
+          push: false
+          tags: enterprise-mlops-inference:latest

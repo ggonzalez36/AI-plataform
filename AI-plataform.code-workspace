@@ -1,0 +1,35 @@
+{
+	"folders": [
+		{
+			"name": "AI-plataform",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/.git": true,
+			"**/.svn": true,
+			"**/.hg": true,
+			"**/CVS": true,
+			"**/.DS_Store": true,
+			"**/Thumbs.db": true,
+			"**/__pycache__": true,
+			"**/*.pyc": true
+		},
+		"search.exclude": {
+			"**/node_modules": true,
+			"**/venv": true,
+			"**/.venv": true,
+			"**/__pycache__": true
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"golang.go",
+			"ms-python.python",
+			"ms-azuretools.vscode-docker",
+			"hashicorp.terraform",
+			"redhat.vscode-yaml"
+		]
+	}
+}
