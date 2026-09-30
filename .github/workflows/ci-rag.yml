@@ -36,6 +36,10 @@ jobs:
         working-directory: services/hybrid-rag-engine
         run: flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
 
+      - name: Run Pytest
+        working-directory: services/hybrid-rag-engine
+        run: pytest -v
+
       - name: Build Container Image (Dry Run)
         uses: docker/build-push-action@v5
         with:
