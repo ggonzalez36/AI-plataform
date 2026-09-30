@@ -231,3 +231,56 @@ func TestReverseProxyContextPropagation(t *testing.T) {
 		t.Errorf("expected downstream to receive X-Tenant-Id='tenant-99', got '%s'", receivedTenantID)
 	}
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	cfg := createTestConfig()
+	router := SetupRouter(cfg, nil)
+
+	req, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Errorf("expected X-Frame-Options: DENY, got %s", w.Header().Get("X-Frame-Options"))
+	}
+	if w.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Errorf("expected X-Content-Type-Options: nosniff, got %s", w.Header().Get("X-Content-Type-Options"))
+	}
+	if !strings.Contains(w.Header().Get("Strict-Transport-Security"), "max-age=") {
+		t.Errorf("expected HSTS header, got %s", w.Header().Get("Strict-Transport-Security"))
+	}
+	if !strings.Contains(w.Header().Get("Content-Security-Policy"), "default-src") {
+		t.Errorf("expected CSP header, got %s", w.Header().Get("Content-Security-Policy"))
+	}
+}
+
+func TestWAFProtectionRules(t *testing.T) {
+	cfg := createTestConfig()
+	router := SetupRouter(cfg, nil)
+
+	// 1. Path traversal attack
+	req1, _ := http.NewRequest(http.MethodGet, "/healthz?file=../../etc/passwd", nil)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for path traversal, got %d", w1.Code)
+	}
+
+	// 2. Cross-Site Scripting (XSS) attack
+	req2, _ := http.NewRequest(http.MethodGet, "/healthz?q=<script>alert('xss')</script>", nil)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for XSS attack, got %d", w2.Code)
+	}
+
+	// 3. Malicious scanner User-Agent
+	req3, _ := http.NewRequest(http.MethodGet, "/healthz", nil)
+	req3.Header.Set("User-Agent", "sqlmap/1.5.2#stable")
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+	if w3.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden for sqlmap scanner, got %d", w3.Code)
+	}
+}
+

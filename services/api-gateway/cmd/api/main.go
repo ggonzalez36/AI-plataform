@@ -39,6 +39,12 @@ func SetupRouter(cfg *config.Config, redisClient *redis.Client) *gin.Engine {
 	// 1. Core Distributed Tracing & W3C context injection
 	router.Use(middleware.W3CTracingMiddleware())
 
+	// 2. OWASP Hardened HTTP Security Headers (HSTS, CSP, X-Frame-Options)
+	router.Use(middleware.SecurityHeadersMiddleware())
+
+	// 3. Web Application Firewall (WAF) & Request Body Protection
+	router.Use(middleware.WAFMiddleware(5 * 1024 * 1024))
+
 	// 2. Distributed Rate Limiter with in-memory fallback
 	limiter := middleware.NewRateLimiter(redisClient, cfg.RateLimitRPS, cfg.RateLimitBurst)
 	publicPrefixes := []string{"/healthz", "/metrics", "/api/v1/auth/token"}

@@ -214,7 +214,8 @@ enterprise-ai-platform/
 │   │   ├── 0001-monorepo-strategy.md
 │   │   ├── 0002-api-gateway-in-go.md
 │   │   ├── 0003-qdrant-for-hybrid-search.md
-│   │   └── 0004-onnx-runtime-for-mlops.md
+│   │   ├── 0004-onnx-runtime-for-mlops.md
+│   │   └── 0005-ai-security-guardrails-and-waf.md
 │   └── api/                           # OpenAPI (Swagger) specifications
 ├── docker-compose.yml                 # Single-command full-stack local environment
 ├── Makefile                           # Developer CLI automation
@@ -347,6 +348,7 @@ Our technical decisions are documented through standardized ADRs in `docs/adr/`:
 | [ADR-0002](docs/adr/0002-api-gateway-in-go.md) | API Gateway implemented in Go | **Accepted** | Selected for sub-millisecond concurrency, low footprint (<25MB RAM), and native Cloud-Native ecosystem integration. |
 | [ADR-0003](docs/adr/0003-qdrant-for-hybrid-search.md) | Qdrant as Primary Vector Store | **Accepted** | Native support for dense + sparse payload filtering and Rust-based high-throughput indexing. |
 | [ADR-0004](docs/adr/0004-onnx-runtime-for-mlops.md) | ONNX Runtime for Real-Time Inference | **Accepted** | Eliminates heavy framework dependencies (PyTorch/TensorFlow) in production containers and achieves <5ms inference. |
+| [ADR-0005](docs/adr/0005-ai-security-guardrails-and-waf.md) | AI Security Guardrails, WAF & DLP | **Accepted** | Multi-layered defense against OWASP LLM01 (Prompt Injection), LLM06 (PII Disclosure with Luhn check), and edge WAF in Go. |
 
 ---
 
