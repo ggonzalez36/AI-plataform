@@ -23,6 +23,7 @@
   - [1. API Gateway (Go)](#1-api-gateway-go)
   - [2. Hybrid RAG Engine (FastAPI + Qdrant)](#2-hybrid-rag-engine-fastapi--qdrant)
   - [3. MLOps Inference Service (FastAPI + ONNX Runtime)](#3-mlops-inference-service-fastapi--onnx-runtime)
+- [AI Cybersecurity & Defense-in-Depth](#-ai-cybersecurity--defense-in-depth)
 - [Observability & SRE](#-observability--sre)
 - [Kubernetes & GitOps](#-kubernetes--gitops)
 - [Infrastructure as Code (Terraform)](#-infrastructure-as-code-terraform)
@@ -179,27 +180,28 @@ enterprise-ai-platform/
 │       └── argocd-root-app.yaml       # ArgoCD App-of-Apps root pattern
 ├── services/
 │   ├── api-gateway/                   # [Go 1.22]
-│   │   ├── cmd/api/main.go            # Entrypoint
-│   │   ├── internal/auth/             # JWT & RBAC Middleware
-│   │   ├── internal/limiter/          # Redis Token Bucket Limiter
+│   │   ├── cmd/api/                   # Entrypoint & Router (main.go, main_test.go)
+│   │   ├── internal/config/           # Dynamic Configuration Loader
+│   │   ├── internal/middleware/       # JWT RBAC, Redis Limiter, W3C Tracing, WAF & Headers
 │   │   ├── internal/proxy/            # Reverse Proxy & Tracing Injector
 │   │   ├── Dockerfile
 │   │   └── go.mod
 │   ├── hybrid-rag-engine/             # [Python 3.11]
 │   │   ├── src/
-│   │   │   ├── api/routes.py          # FastAPI Endpoints
-│   │   │   ├── core/retrieval.py      # Qdrant Hybrid Search (Dense + Sparse)
-│   │   │   ├── core/reranker.py       # Cross-Encoder Re-ranking
-│   │   │   └── eval/ragas_eval.py     # Automated evaluation pipeline
-│   │   ├── tests/
+│   │   │   ├── api/                   # FastAPI Endpoints & Pydantic Schemas
+│   │   │   ├── core/                  # Dense/Sparse Embeddings, Qdrant Store, RRF Reranker
+│   │   │   ├── security/              # Prompt Injection Guardrails & PII/DLP Redactor
+│   │   │   └── eval/                  # Automated Ragas evaluation metrics
+│   │   ├── tests/                     # Unit & Integration Tests (Embeddings, RRF, Security, API)
 │   │   ├── Dockerfile
 │   │   └── pyproject.toml
 │   └── mlops-inference/               # [Python 3.11]
 │       ├── src/
-│       │   ├── api/routes.py          # Real-time scoring endpoint
-│       │   ├── engine/onnx_runner.py  # High-throughput ONNX Runtime executor
-│       │   └── monitoring/drift.py    # Evidently Data Drift verification
-│       ├── model/                     # Exported .onnx models & metadata
+│       │   ├── api/                   # Real-time & Batch scoring endpoints
+│       │   ├── engine/                # High-throughput ONNX Runtime executor
+│       │   └── monitoring/            # Kolmogorov-Smirnov Data Drift verification
+│       ├── model/                     # Exported .onnx models & training generator
+│       ├── tests/                     # Unit Tests (Engine, Drift, API)
 │       ├── Dockerfile
 │       └── pyproject.toml
 ├── monitoring/                        # SRE & Observability Stack
@@ -227,28 +229,68 @@ enterprise-ai-platform/
 ## 🔧 Services Breakdown
 
 ### 1. API Gateway (Go)
-- **Role**: High-concurrency reverse proxy, edge authentication, rate limiting, and distributed tracing initiator.
-- **Tech Stack**: Go 1.22, Gin/Chi, `go-redis`, OpenTelemetry Go SDK.
+- **Role**: High-concurrency edge security, reverse proxy, JWT RBAC, rate limiting, and distributed tracing initiator.
+- **Tech Stack**: Go 1.22, Gin, `go-redis`, OpenTelemetry Go SDK, `golang-jwt`.
 - **Key Features**:
-  - Sub-millisecond routing overhead.
-  - Redis-backed distributed token bucket algorithm to prevent DoS and enforce tier limits.
-  - Automatic injection of W3C `traceparent` headers to downstream Python services.
+  - Sub-millisecond routing overhead with connection pooling.
+  - **Lightweight WAF**: Rejects Path Traversal (`../`), Command Injection, XSS, and automated vulnerability scanners (`sqlmap`, `nikto`).
+  - **OWASP Hardened Headers**: Enforces HSTS, CSP (`frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`.
+  - **Distributed Token-Bucket**: Redis-backed rate limiting with seamless in-memory fallback.
+  - **W3C Trace Context**: Generates and propagates `traceparent` (`00-{trace_id}-{span_id}-01`) and `X-Trace-Id`.
 
 ### 2. Hybrid RAG Engine (FastAPI + Qdrant)
-- **Role**: Enterprise document retrieval, context fusion, and factual response generation.
+- **Role**: Enterprise document retrieval, context fusion, AI security guardrails, and factual response generation.
 - **Tech Stack**: Python 3.11, FastAPI, Qdrant Client, FastEmbed / Sentence-Transformers, Ragas.
 - **Key Features**:
+  - **AI Prompt Injection Guard (OWASP LLM01)**: Pre-retrieval scanner detecting instruction overrides, jailbreaks (DAN), delimiter hijacking, and Base64 evasions.
+  - **PII / Sensitive Data Redactor (OWASP LLM06)**: Dual-phase DLP sanitization masking credit cards (with Luhn mod-10 validation), SSNs, API tokens (`sk-*`, `ghp_*`), emails, and phones.
   - **Hybrid Search**: Fuses Dense semantic vectors (cosmic distance) with Sparse BM25 tokens for acronyms and specific clauses.
-  - **Re-ranking**: Second-stage Cross-Encoder filters irrelevant context to minimize LLM hallucination and token cost.
+  - **Re-ranking**: Reciprocal Rank Fusion (RRF) and Cross-Encoder filters irrelevant context to minimize hallucination.
   - **Evaluation Suite**: Integrated Ragas tests assessing *faithfulness*, *answer relevancy*, and *context precision*.
 
 ### 3. MLOps Inference Service (FastAPI + ONNX Runtime)
-- **Role**: Ultra-low-latency real-time scoring and classification.
-- **Tech Stack**: Python 3.11, ONNX Runtime, MLflow Tracking, Evidently AI.
+- **Role**: Ultra-low-latency real-time scoring, tabular validation, and statistical governance.
+- **Tech Stack**: Python 3.11, ONNX Runtime, NumPy, MLflow Tracking, Prometheus.
 - **Key Features**:
   - **ONNX Optimization**: Converted models run with hardware-accelerated thread pooling, reducing inference latency by up to 5x compared to raw PyTorch/Scikit-learn.
   - **Model Lineage**: Direct integration with MLflow Model Registry for version-controlled deployment.
-  - **Data Drift Detection**: Real-time evaluation of feature drift using Kolmogorov-Smirnov statistical tests.
+  - **Data Drift Detection**: Real-time evaluation of tabular feature drift using two-sample Kolmogorov-Smirnov (KS) statistical tests.
+
+---
+
+## 🛡️ AI Cybersecurity & Defense-in-Depth
+
+The platform treats security as a first-class citizen across all layers, addressing threats from the **OWASP Top 10 for LLM Applications** and **OWASP API Security Top 10**:
+
+| Security Layer | Vector / Threat | Mitigation Mechanism | Standard / Impact |
+| :--- | :--- | :--- | :--- |
+| **API Gateway (Edge)** | Path Traversal / XSS / SQLi | Regex-based WAF inspection on paths, query params, and scanner User-Agents | OWASP API Top 10 (`403 Forbidden`) |
+| **API Gateway (Edge)** | Clickjacking / MIME Sniffing | Hardened HTTP response headers (`HSTS`, `CSP`, `X-Frame-Options: DENY`, `nosniff`) | Banking & Enterprise Compliance |
+| **API Gateway (Edge)** | API Abuse & Distributed DoS | Atomic Redis Token-Bucket with in-memory resilient fallback and body limits | Rate limiting (`429 Too Many Requests`) |
+| **Hybrid RAG (Core)** | Prompt Injection & Jailbreaks | Semantic & heuristic regex scanner with Base64 payload decoding (`guardrails.py`) | OWASP LLM01 (`400 Bad Request`) |
+| **Hybrid RAG (Core)** | PII & Secret Exfiltration | Dual-phase DLP redacting Luhn-validated PANs, SSNs, and API keys (`dlp.py`) | OWASP LLM06 & PCI-DSS / GDPR |
+| **MLOps (Core)** | Data & Distribution Poisoning | Kolmogorov-Smirnov statistical two-sample hypothesis testing on feature buffers | Model Drift Alerting to Prometheus |
+
+```mermaid
+flowchart TD
+    Req["Incoming Client Request"] --> WAF["Edge WAF Inspection<br/>• Path Traversal Check<br/>• XSS & Command Injection Check<br/>• Payload Size < 5MB"]
+    WAF -->|Violation| Block403["403 Forbidden<br/>[SECURITY_AUDIT Event]"]
+    WAF -->|Clean| RateLimit["Redis Token Bucket<br/>Rate Limiting"]
+    RateLimit -->|Exceeded| Block429["429 Too Many Requests<br/>Retry-After Header"]
+    RateLimit -->|Allowed| JWT["JWT Auth & RBAC<br/>Role Validation"]
+    JWT --> Proxy["Reverse Proxy Forwarding<br/>(W3C traceparent injected)"]
+
+    Proxy --> RAG["Hybrid RAG Service"]
+    subgraph AISecurity ["🧠 RAG AI Security Boundary"]
+        RAG --> Guard["Prompt Injection Guard<br/>• Instruction Override Check<br/>• Delimiter Hijacking Check<br/>• Base64 Evasion Decode"]
+        Guard -->|Malicious| Block400["400 Bad Request<br/>PROMPT_INJECTION_DETECTED"]
+        Guard -->|Clean| DLP_In["Ingestion DLP<br/>• Luhn Credit Card Masking<br/>• SSN & API Key Redactor"]
+        DLP_In --> Search["Hybrid Qdrant Retrieval<br/>Dense + Sparse BM25 + RRF"]
+        Search --> Synth["LLM Context Synthesis"]
+        Synth --> DLP_Out["Egress DLP<br/>Guaranteed Zero PII Leakage"]
+    end
+    DLP_Out --> Resp["200 OK Secure Response"]
+```
 
 ---
 
